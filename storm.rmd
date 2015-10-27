@@ -1,0 +1,326 @@
+---
+output: html_document
+---
+ 
+Health and Economic Impact of Weather Events in the US
+======================================================
+    
+Storms and other severe weather events can cause both public health and economic problems for communities and municipalities. Many severe events can result in fatalities, injuries, and property damage, and preventing such outcomes to the extent possible is a key concern.
+
+This project involves exploring the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database. This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage.
+
+Data
+====
+The analysis was performed on
+[Storm Events Database](http://www.ncdc.noaa.gov/stormevents/ftp.jsp), provided by
+[National Climatic Data Center](http://www.ncdc.noaa.gov/). 
+
+The Storm data is from a comma-separated-value file available
+[here](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2)[47Mb].
+
+There is also some documentation of the data available
+[here](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf).
+
+National Climatic Data Center Storm Events [FAQ](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2FNCDC%20Storm%20Events-FAQ%20Page.pdf)
+
+Unique Event Types as defined by NOAA can be found [here](http://www.ncdc.noaa.gov/stormevents/pd01016005curr.pdf). Please Refer Section 7.
+
+
+Synopsis
+========
+
+The analysis on the storm event database revealed that tornadoes are the most
+dangerous weather event to the population health. The second most dangerous
+event type is the excessive heat. The economic impact of weather events was
+also analyzed. Flash floods and thunderstorm winds caused billions of dollars
+in property damages between 1950 and 2011. The largest crop damage caused by
+drought, followed by flood and hails.
+
+
+Data Processing
+===============
+ 
+####Download Data
+
+1. Downloaded Storm data file in local directory
+2. I downloaded Unique Event Types from NOAA website and saved them into an excel file in local directory and named file event_type.csv.
+
+At this point, i assume you have 2 files in your local directory.
+If not, please download files before proceeding.
+ 
+The first step is to read the data into a data frame.
+
+```{r cache=TRUE}
+#file_url <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+filename <- "repdata_data_StormData.csv.bz2"
+#download.file(url=file_url, destfile=filename)
+#downloadOn <- format(Sys.time(), "%b %d, %Y %X")
+data <- read.csv(bzfile(filename))
+```
+
+
+####Pr-Processing of event type data
+ 
+```{r}
+library(dplyr)
+
+# prepare event data
+event_type_filename="event_type.csv"
+
+event_type <- read.csv(event_type_filename, header=TRUE )
+event_type <- mutate_each(event_type, funs(toupper))
+names(event_type) <- c( "event", "desig")
+# replace anything after \ with blank 
+event_type <- as.data.frame(apply(event_type,2,function(x)gsub('/.*', '',x)))
+# replace anything after ( with blank 
+event_type <- as.data.frame(apply(event_type,2,function(x)gsub('\\(.*', '',x)))
+#sub - with _ 
+event_type <- as.data.frame(apply(event_type,2,function(x)gsub('-', '_',x)))
+#remove leading blank
+event_type <- as.data.frame(apply(event_type,2,function(x)gsub('^ ', '',x)))
+#remove trailing blank
+event_type <- as.data.frame(apply(event_type,2,function(x)gsub(' $', '',x)))
+#sub blank with _ 
+event_type <- as.data.frame(apply(event_type,2,function(x)gsub(' ', '_',x)))
+
+# recode
+event_type$ne <- event_type$event
+event_type$ne <- gsub( "ASTRO.*", "ASTRONOMICAL", event_type$ne)
+
+paste(" Number of Unique Storm Events as defined by NOAA :", length(unique(event_type$ne)))
+```
+
+
+####Pr-Processing of storm data
+
+```{r}
+# number of unique event types
+paste("Count of Unique Storm Events in Storm Data :", length(unique(data$EVTYPE)))
+
+#prepare storm data 
+storm <- select( data,EVTYPE, FATALITIES, INJURIES,PROPDMG,CROPDMG,PROPDMGEXP,CROPDMGEXP )
+storm <- mutate(storm, event=toupper(EVTYPE))
+# replace anything after \ with blank 
+storm$event <- gsub('/.*', '',storm$event)
+# replace anything after ( with blank 
+storm$event<- gsub('\\(.*', '',storm$event)
+#sub - with _ 
+storm$event <-  gsub('-', '_',storm$event)
+#remove leading blank
+storm$event<-  gsub('^ ', '',storm$event) 
+#remove trailing blank
+storm$event <-  gsub(' $', '',storm$event) 
+#sub blank with _ 
+storm$event<-  gsub(' ', '_',storm$event) 
+ 
+# do not copy data that are difficult to map
+storm <- storm[ -which(storm$event=="?"), ]
+storm <- storm[ -which(grepl("SUMM|OTHER|NONE|RED|REM|WEATHER", storm$event)), ]
+storm <- storm[ -which(grepl("EXCESSIVE|APACHE|SOUTH|NORTHERN|MILD", storm$event)), ]
+
+ # recode/map data 
+storm$event <- gsub( "WND|TSTM|GUST|WIND|FUNNEL", "HIGH_WIND", storm$event)
+storm$event <- gsub( "URB|FLASH", "FLASH_FLOOD", storm$event)
+storm$event <- gsub( "COAST|EROS|BEACH|DROW", "COASTAL_FLOOD", storm$event)
+storm$event <- gsub( "DAM|STEAM|SEAS|WAVE|STREAM", "FLOOD", storm$event)
+storm$event <- gsub( "WET|MICRO|CLOUD|BURST|WATER|WET|SHOWER", "HEAVY_RAIN", storm$event)
+storm$event <- gsub( "LIGHT|PRECI|GLAZE|RAIN", "HEAVY_RAIN", storm$event)
+storm$event <- gsub( "DRY|WARM|HOT|TEMP|RECORD|DRIEST|UNUSUAL", "EXCESSIVE_HEAT", storm$event)
+storm$event <- gsub( "WILD|FIRE", "WILDFIRE", storm$event)
+storm$event <- gsub( "HYPERTHERMIA|HYPO|EXTRE|MIX|FREEZ", "EXTREME_COLD", storm$event)
+storm$event <- gsub( "LAND|MUD|SLIDE", "DEBRIS_FLOW", storm$event)
+storm$event <- gsub( "ICE|ICY", "ICE_STORM", storm$event)
+storm$event <- gsub( "TYP|HEAVY", "HURRICANE", storm$event)
+storm$event <- gsub( "WINTRY", "WINTER_STORM", storm$event)
+storm$event <- gsub( "HIGH", "TROPICAL_STORM", storm$event)
+storm$event <- gsub( "BLOW|SAHARA|DUST", "BLIZZARD", storm$event)
+storm$event <- gsub( "THUNDER|STORM", "THUNDERSTORM_WIND", storm$event)
+storm$event <- gsub( "VOG|FOG", "DENSE_FOG", storm$event)
+storm$event <- gsub( "SMOKE", "DENSE_SMOKE", storm$event)
+storm$event <- gsub( "COOL|LOW", "COLD", storm$event)
+storm$event <- gsub( "MARINE|SURF", "MARINE_HIGH_WIND", storm$event)
+storm$event <- gsub( "SNOW", "HEAVY_SNOW", storm$event)
+storm$event <- gsub( "TORNDAO", "TORNADO", storm$event)
+storm$event <- gsub( "AVALANCE", "AVALANCHE", storm$event) 
+storm$event <- gsub( "WAYTERSPOUT", "FLOOD", storm$event)
+storm$event <- gsub( "LIGNTNING", "LIGHTNING", storm$event)
+storm$event <- gsub( "VOLCANIC", "VOLCANIC_ASH", storm$event)
+
+# sort the data
+storm<-arrange(storm, event)
+
+# add new event to be mapped with event_type
+storm$stormClass <-   "" 
+
+# match 
+for( e in as.vector(unique(event_type$ne) )) { 
+    storm$stormClass[grepl(e, storm$event)] <- e
+}
+
+# number of unique event typespost transformation of storm data
+paste("Count of Unique Storm Events in Storm Data :", length(unique(storm$stormClass)))
+```
+
+ 
+After the cleaning, as expected, the number of unique event types reduce
+significantly. For further analysis, the cleaned event types are used.
+
+
+Most Harmful Events Data 
+========================= 
+    
+   prepare FATALITIES, INJURIES,PROPDMG,CROPDMG Data
+   
+   To analyze economic damage:
+   
+   Property damage is represented with two fields, `PROPDMG` in dollars and the exponent `PROPDMGEXP`. 
+   
+   Crop damage is represented using two fields, `CROPDMG` and `CROPDMGEXP`.
+   
+   
+```{r}
+# prepare FATALITIES, INJURIES,PROPDMG,CROPDMG
+storm$FATALITIES <- as.numeric( storm$FATALITIES )
+storm$INJURIES <- as.numeric( storm$INJURIES )
+```
+
+
+####Prepare Property Damage Data
+
+
+```{r}
+# prepare  PROPDMG 
+storm$PROPDMG <- as.numeric( storm$PROPDMG )
+
+#clean prop  data 
+storm$PROPDMGEXP<-  gsub('^ $', '',storm$PROPDMGEXP) 
+storm$PROPDMGEXP <- gsub('[-?+]', 0, storm$PROPDMGEXP)
+storm$PROPDMGEXP <- gsub('^$', 0, storm$PROPDMGEXP)
+
+# sub letter with numbers
+# h ->hundred, k - 1000, m -> million, b is billion...convert to million
+storm$PROPDMGEXP <- gsub('[Hh]', .0001, storm$PROPDMGEXP)
+storm$PROPDMGEXP <- gsub('[Kk]', .001, storm$PROPDMGEXP)
+storm$PROPDMGEXP <- gsub('[Mm]', 1, storm$PROPDMGEXP)
+storm$PROPDMGEXP <- gsub('[Bb]', 1000, storm$PROPDMGEXP)
+ 
+#calc prop  damage in millions 
+storm$PROPDMG <- as.numeric(storm$PROPDMG*as.numeric(storm$PROPDMGEXP))
+```
+
+
+####Prepare Crop Damage Data
+
+
+```{r}
+# prepare  CROPDMG
+storm$CROPDMG <- as.numeric( storm$CROPDMG )
+
+#clean prop and crop data 
+storm$CROPDMGEXP<-  gsub('^ $', '',storm$CROPDMGEXP) 
+storm$CROPDMGEXP <- gsub('[-?+]', 0, storm$CROPDMGEXP)
+storm$CROPDMGEXP <- gsub('^$', 0, storm$CROPDMGEXP)
+
+# sub letter with numbers
+# h ->hundred, k - 1000, m -> million, b is billion...convert to million
+storm$CROPDMGEXP <- gsub('[Hh]', .0001, storm$CROPDMGEXP)
+storm$CROPDMGEXP <- gsub('[Kk]', .001, storm$CROPDMGEXP)
+storm$CROPDMGEXP <- gsub('[Mm]', 1, storm$CROPDMGEXP)
+storm$CROPDMGEXP <- gsub('[Bb]', 1000, storm$CROPDMGEXP)
+ 
+#calc crop damage in millions 
+storm$CROPDMG <- as.numeric(storm$CROPDMG*as.numeric(storm$CROPDMGEXP))
+```
+
+
+####Top 10 events that caused largest number of deaths are
+
+
+```{r}
+library(ggplot2)
+
+# calc fatal data 
+fatal  <- aggregate(  storm$FATALITIES , list( event =storm$stormClass), sum )
+fatal <-fatal[order(fatal$x, decreasing = TRUE), ]
+ggplot(fatal[1:10,], aes(x = reorder(event, x), y = x)) + 
+    geom_bar(stat = "identity", fill = "blue", las = 3) +
+    coord_flip() + 
+    xlab("EVENT TYPE") + ylab("FATALITIES") +
+    ggtitle("Fatalities by Top 10 Weather Events")
+```
+
+
+####Top 10 events that caused most number of injuries are
+
+
+```{r}
+# calc injury data 
+injury  <- aggregate(  storm$INJURIES , list( event =storm$stormClass), sum )
+colnames(injury) <- c("event", "total")
+injury <-injury[order(injury$total, decreasing = TRUE), ]
+ggplot(injury[1:10,], aes(x = reorder(event, total), y = total)) + 
+    geom_bar(stat = "identity", fill = "red" ) +
+    coord_flip() + 
+    xlab("EVENT TYPE") + ylab("INJURIES") +
+    ggtitle("Injuries by Top 10 Weather Events")
+```
+
+  
+####Top 10 events that caused most property damage (in dollars) are  
+
+ 
+```{r}
+prop <- aggregate( storm$PROPDMG , list( event =storm$stormClass), sum )
+names(prop) <- c("event", "loss")
+prop <-prop[order(prop$loss, decreasing = TRUE), ]
+
+ggplot(prop[1:10,], aes(x = reorder(event, loss), y = loss)) + 
+    geom_bar(stat = "identity", fill = "green" ) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    xlab("EVENT TYPE") + ylab("Property Loss( in Millions)") +
+    ggtitle("Property Loss by Top 10 Weather Events")
+```
+ 
+ 
+####Top 10 events that caused most crop damage (in dollars) are as follows
+
+
+```{r}
+crop <- aggregate( storm$CROPDMG , list( event =storm$stormClass), sum )
+names(crop) <- c("event", "loss")
+crop <-crop[order(crop, decreasing = TRUE), ]
+
+ggplot(crop[1:10,], aes(x = reorder(event, loss), y = loss)) + 
+    geom_bar(stat = "identity", fill = "black" ) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    xlab("EVENT TYPE") + ylab("Crop Loss( in Millions)") +
+    ggtitle("Crop Loss by Top 10 Weather Events")
+```
+ 
+
+Results
+=======
+
+####Population Death & Injury
+
+Based on NOAA data, Tornadoes cause most number of deaths and injuries among all event types. There are more than 5,000 deaths and more than 75,000 injuries in the last 60 years
+in US, due to tornadoes. 
+The other event types that are most dangerous with respect to population health
+are wind and floods.
+
+####Economic consequences to Property 
+
+The most severe weather event in terms of property damage is the Flood. In the last
+half century, the flood has caused more than 150 billion dollars damage. Other
+severe property-damage-causing event types are hurricane and wind.
+ 
+####Economic consequences to Crop
+
+ The most severe weather event in terms of crop damage is the thunderstorm. In the last
+half century, the it  has caused more than 8 billion dollars damage. Other
+severe crop-damage-causing event types are tornado and fire.
+
+
+
+
+ 
